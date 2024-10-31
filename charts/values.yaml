@@ -1,0 +1,19 @@
+
+replicaCount: 2
+
+image:
+  repository: laly9999/argo-app
+  tag: "2"
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 3000
+
+appLabels:
+  app: node-app
+  tier: frontend
+  version: "1.0.0"
+
+containerPort: 3000
