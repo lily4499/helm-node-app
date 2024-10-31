@@ -5,7 +5,7 @@ kind: Service
 metadata:
   name: {{ .Release.Name }}-service
   labels:
-    app: {{ .Values.appLabels.app | default "node-app" }}
+    app: {{ .Values.appLabels.app }}
     tier: {{ .Values.appLabels.tier }}
     version: {{ .Values.appLabels.version }}
 spec:
