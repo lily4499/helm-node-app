@@ -1,10 +1,11 @@
-ipeline {
+pipeline {
     agent any
     environment {
-        AWS_CREDENTIALS = 'aws-credentials'  // Jenkins credentials ID for AWS
-        ECR_REPO_NAME = 'my-app-repo'  // ECR repository name
-        IMAGE_TAG = "my-app:${BUILD_NUMBER}"  // Tagging the image with the build number
-        AWS_REGION = 'us-east-1'  // AWS region
+        AWS_CREDENTIALS = 'aws-credentials'  // Replace with your Jenkins AWS credentials ID
+        ECR_REPO_URI = '637423529262.dkr.ecr.us-east-1.amazonaws.com/my-app-repo'  // Replace with your ECR URI
+        IMAGE_TAG = "${ECR_REPO_URI}:${BUILD_NUMBER}"
+        AWS_REGION = 'us-east-1'  // Replace with your AWS region
+        NAMESPACE = 'default'  // Set the Kubernetes namespace
     }
     stages {
         stage('Clone Repository') {
@@ -19,31 +20,43 @@ ipeline {
                 sh 'docker build -t $IMAGE_TAG .'
             }
         }
-        stage('Login to ECR') {
+        stage('Login to AWS ECR') {
             steps {
-                echo 'Logging in to ECR...'
+                echo 'Logging in to AWS ECR...'
                 withCredentials([usernamePassword(credentialsId: "$AWS_CREDENTIALS", usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com'
+                    sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO_URI'
                 }
             }
         }
         stage('Push Docker Image to ECR') {
             steps {
                 echo 'Pushing Docker image to ECR...'
-                sh 'docker tag $IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$BUILD_NUMBER'
-                sh 'docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$BUILD_NUMBER'
+                sh 'docker push $IMAGE_TAG'
+            }
+        }
+        stage('Update Deployment File') {
+            steps {
+                echo 'Updating deployment.yaml with the new image tag...'
+                // Replace the image tag in deployment.yaml with the current IMAGE_TAG
+                sh '''
+                   sed -i "s|image:.*|image: $IMAGE_TAG|" k8s/deployment.yaml
+                '''
             }
         }
         stage('Deploy to EKS') {
             steps {
                 echo 'Deploying to EKS...'
-                sh 'kubectl apply -f k8s/deployment.yaml'
+                sh 'kubectl apply -f k8s/deployment.yaml -n $NAMESPACE'
+                
+                // Wait until pods are up and running
+                echo 'Waiting for pods to be in a running state...'
+                sh 'kubectl rollout status deployment/release-node-app-deployment -n $NAMESPACE'
             }
         }
     }
     post {
         always {
-            echo 'Cleaning up local Docker images...'
+            echo 'Cleaning up local images...'
             sh 'docker rmi $IMAGE_TAG || true'
         }
     }
